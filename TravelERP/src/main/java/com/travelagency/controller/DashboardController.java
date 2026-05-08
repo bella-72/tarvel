@@ -4,13 +4,12 @@ import com.travelagency.model.User;
 import com.travelagency.service.*;
 import javafx.fxml.FXML;
 import javafx.fxml.FXMLLoader;
+import javafx.scene.Parent;
 import javafx.scene.Scene;
 import javafx.scene.control.*;
 import javafx.scene.layout.BorderPane;
 import javafx.scene.layout.VBox;
 import javafx.stage.Stage;
-import javafx.geometry.Pos;
-import javafx.scene.text.Font;
 import java.io.IOException;
 
 /**
@@ -71,6 +70,17 @@ public class DashboardController {
     public void setCurrentUser(User user) {
         this.currentUser = user;
         userLabel.setText("Welcome, " + user.getUsername() + " (" + user.getRole().getValue() + ")");
+        if (currentUser.getRole() != User.UserRole.ADMIN) {
+            reportsBtn.setDisable(true);
+            paymentsBtn.setDisable(true);
+            reportsBtn.setVisible(false);
+            paymentsBtn.setVisible(false);
+        } else {
+            reportsBtn.setDisable(false);
+            paymentsBtn.setDisable(false);
+            reportsBtn.setVisible(true);
+            paymentsBtn.setVisible(true);
+        }
         loadDashboardView();
     }
 
@@ -217,10 +227,10 @@ public class DashboardController {
     private void handleLogout() {
         try {
             FXMLLoader loader = new FXMLLoader(getClass().getResource("/fxml/LoginView.fxml"));
-            VBox root = loader.load();
+            Parent root = loader.load();
             
             Stage stage = (Stage) mainBorderPane.getScene().getWindow();
-            Scene scene = new javafx.scene.Scene(root, 1000, 600);
+            Scene scene = new Scene(root, 1000, 600);
             scene.getStylesheets().add(getClass().getResource("/css/styles.css").toExternalForm());
             stage.setScene(scene);
             stage.show();

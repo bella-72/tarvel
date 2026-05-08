@@ -2,6 +2,7 @@ package com.travelagency.controller;
 
 import com.travelagency.model.TravelPackage;
 import com.travelagency.service.TravelPackageService;
+import javafx.beans.binding.BooleanBinding;
 import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
 import javafx.fxml.FXML;
@@ -18,13 +19,21 @@ import java.util.List;
  * Packages Management Controller
  */
 public class PackagesController {
-
     @FXML
     private VBox mainContainer;
 
     private TravelPackageService packageService;
     private TableView<TravelPackage> packagesTable;
     private ObservableList<TravelPackage> packagesData;
+    private ComboBox<String> destinationFilterCombo;
+
+    @FXML
+    public void initialize() {
+        if (packageService == null) {
+            packageService = new TravelPackageService();
+        }
+        loadPackages();
+    }
 
     /**
      * Set package service
@@ -37,7 +46,8 @@ public class PackagesController {
      * Load packages
      */
     public void loadPackages() {
-        if (mainContainer == null) return;
+       if (mainContainer == null) return;
+mainContainer.getChildren().clear();
 
         mainContainer.setPadding(new Insets(20));
         mainContainer.setSpacing(15);
@@ -106,30 +116,64 @@ public class PackagesController {
 
         Button addButton = new Button("Add Package");
         addButton.setStyle("-fx-font-size: 12; -fx-padding: 8;");
-        addButton.setOnAction(e -> {
-            TravelPackage pkg = new TravelPackage();
-            pkg.setPackageName(pkgNameField.getText());
-            pkg.setDestination(destinationField.getText());
-            pkg.setDurationDays(Integer.parseInt(durationField.getText()));
-            pkg.setPricePerPerson(Double.parseDouble(priceField.getText()));
-            pkg.setMaxCapacity(Integer.parseInt(capacityField.getText()));
-            pkg.setAvailableSeats(Integer.parseInt(capacityField.getText()));
-            pkg.setStartDate(startDatePicker.getValue());
-            pkg.setEndDate(endDatePicker.getValue());
-            pkg.setPackageType(TravelPackage.PackageType.valueOf(typeCombo.getValue()));
-            pkg.setDescription(descriptionField.getText());
 
-            if (packageService.createPackage(pkg)) {
-                showAlert("Success", "Package added successfully", Alert.AlertType.INFORMATION);
-                refreshPackagesTable();
-                pkgNameField.clear();
-                destinationField.clear();
-                durationField.clear();
-                priceField.clear();
-                capacityField.clear();
-                descriptionField.clear();
-            } else {
-                showAlert("Error", "Failed to add package", Alert.AlertType.ERROR);
+        BooleanBinding invalidInput = pkgNameField.textProperty().isEmpty()
+            .or(destinationField.textProperty().isEmpty())
+            .or(durationField.textProperty().isEmpty())
+            .or(priceField.textProperty().isEmpty())
+            .or(capacityField.textProperty().isEmpty())
+            .or(typeCombo.valueProperty().isNull())
+            .or(startDatePicker.valueProperty().isNull())
+            .or(endDatePicker.valueProperty().isNull());
+        addButton.disableProperty().bind(invalidInput);
+
+        addButton.setOnAction(e -> {
+            try {
+                int duration = Integer.parseInt(durationField.getText().trim());
+                double price = Double.parseDouble(priceField.getText().trim());
+                int capacity = Integer.parseInt(capacityField.getText().trim());
+                LocalDate startDate = startDatePicker.getValue();
+                LocalDate endDate = endDatePicker.getValue();
+
+                if (duration <= 0 || price <= 0 || capacity <= 0) {
+                    showAlert("Validation Error", "Duration, price and capacity must be positive values.", Alert.AlertType.WARNING);
+                    return;
+                }
+
+                if (endDate.isBefore(startDate)) {
+                    showAlert("Validation Error", "End date must be after start date.", Alert.AlertType.WARNING);
+                    return;
+                }
+
+                TravelPackage pkg = new TravelPackage();
+                pkg.setPackageName(pkgNameField.getText().trim());
+                pkg.setDestination(destinationField.getText().trim());
+                pkg.setDurationDays(duration);
+                pkg.setPricePerPerson(price);
+                pkg.setMaxCapacity(capacity);
+                pkg.setAvailableSeats(capacity);
+                pkg.setStartDate(startDate);
+                pkg.setEndDate(endDate);
+                pkg.setPackageType(TravelPackage.PackageType.valueOf(typeCombo.getValue()));
+                pkg.setDescription(descriptionField.getText().trim());
+
+                if (packageService.createPackage(pkg)) {
+                    showAlert("Success", "Package added successfully.", Alert.AlertType.INFORMATION);
+                    refreshPackagesTable();
+                    pkgNameField.clear();
+                    destinationField.clear();
+                    durationField.clear();
+                    priceField.clear();
+                    capacityField.clear();
+                    descriptionField.clear();
+                    typeCombo.getSelectionModel().clearSelection();
+                    startDatePicker.setValue(null);
+                    endDatePicker.setValue(null);
+                } else {
+                    showAlert("Error", "Failed to add package. Please try again.", Alert.AlertType.ERROR);
+                }
+            } catch (NumberFormatException ex) {
+                showAlert("Validation Error", "Duration, price, and capacity must be numeric values.", Alert.AlertType.WARNING);
             }
         });
 
@@ -152,9 +196,18 @@ public class PackagesController {
         section.setPadding(new Insets(10));
         section.setStyle("-fx-background-color: white; -fx-border-color: #bdc3c7; -fx-background-radius: 5;");
 
-        ComboBox<String> destinationCombo = new ComboBox<>();
-        destinationCombo.setPromptText("Filter by Destination");
-        destinationCombo.setPrefWidth(150);
+        destinationFilterCombo = new ComboBox<>();
+        destinationFilterCombo.setPromptText("Filter by Destination");
+        destinationFilterCombo.setPrefWidth(200);
+        destinationFilterCombo.setOnAction(e -> {
+            String selected = destinationFilterCombo.getValue();
+            if (selected == null || selected.isBlank()) {
+                refreshPackagesTable();
+                return;
+            }
+            List<TravelPackage> filtered = packageService.getPackagesByDestination(selected);
+            packagesData.setAll(filtered);
+        });
 
         Button showAllButton = new Button("Show All");
         showAllButton.setOnAction(e -> refreshPackagesTable());
@@ -165,7 +218,7 @@ public class PackagesController {
             packagesData.setAll(available);
         });
 
-        section.getChildren().addAll(new Label("Filter:"), destinationCombo, showAllButton, availableButton);
+        section.getChildren().addAll(new Label("Filter:"), destinationFilterCombo, showAllButton, availableButton);
         return section;
     }
 
@@ -174,7 +227,9 @@ public class PackagesController {
      */
     private void createPackagesTable() {
         packagesTable = new TableView<>();
-        packagesTable.setPrefHeight(400);
+        packagesTable.setPrefHeight(420);
+        packagesTable.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY);
+        packagesTable.setPlaceholder(new Label("No packages available."));
         packagesData = FXCollections.observableArrayList();
         packagesTable.setItems(packagesData);
 
@@ -208,6 +263,21 @@ public class PackagesController {
     private void refreshPackagesTable() {
         List<TravelPackage> packages = packageService.getAllPackages();
         packagesData.setAll(packages);
+        populateDestinationFilters();
+    }
+
+    private void populateDestinationFilters() {
+        if (destinationFilterCombo == null) {
+            return;
+        }
+
+        List<TravelPackage> allPackages = packageService.getAllPackages();
+        destinationFilterCombo.getItems().clear();
+        allPackages.stream()
+            .map(TravelPackage::getDestination)
+            .distinct()
+            .sorted()
+            .forEach(destinationFilterCombo.getItems()::add);
     }
 
     /**

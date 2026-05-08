@@ -26,6 +26,9 @@ public class LoginController {
     private Button loginButton;
 
     @FXML
+    private Button createAccountButton;
+
+    @FXML
     private Label errorLabel;
 
     private AuthenticationService authService;
@@ -35,6 +38,25 @@ public class LoginController {
         authService = new AuthenticationService();
         errorLabel.setText("");
         loginButton.setOnAction(e -> handleLogin());
+        createAccountButton.setOnAction(e -> openCreateAccount());
+    }
+
+    /**
+     * Navigate to create account screen
+     */
+    private void openCreateAccount() {
+        try {
+            FXMLLoader loader = new FXMLLoader(getClass().getResource("/fxml/RegisterView.fxml"));
+            Parent root = loader.load();
+            Stage stage = (Stage) loginButton.getScene().getWindow();
+            Scene scene = new Scene(root, 1000, 620);
+            scene.getStylesheets().add(getClass().getResource("/css/styles.css").toExternalForm());
+            stage.setScene(scene);
+            stage.show();
+        } catch (IOException e) {
+            System.err.println("Error opening registration view: " + e.getMessage());
+            errorLabel.setText("Unable to open account creation screen");
+        }
     }
 
     /**

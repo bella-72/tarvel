@@ -1,7 +1,6 @@
 package com.travelagency.database;
 
 import java.sql.*;
-import java.util.Properties;
 
 /**
  * Database Connection Manager for Travel ERP System
@@ -72,8 +71,8 @@ public class DatabaseConnection {
                     user_id INTEGER PRIMARY KEY AUTOINCREMENT,
                     username TEXT NOT NULL UNIQUE,
                     password TEXT NOT NULL,
-                    email TEXT NOT NULL UNIQUE,
-                    role TEXT NOT NULL CHECK (role IN ('ADMIN', 'EMPLOYEE', 'MANAGER')),
+                    email TEXT,
+                    role TEXT NOT NULL CHECK (role IN ('ADMIN', 'USER', 'EMPLOYEE', 'MANAGER')),
                     is_active BOOLEAN DEFAULT 1,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -240,8 +239,135 @@ public class DatabaseConnection {
                 """);
 
             System.out.println("All tables initialized successfully");
+            migrateUsersTableIfNeeded();
+            ensureAdminExists();
+            ensureSampleCustomersExist();
         } catch (SQLException e) {
             System.err.println("Error creating tables: " + e.getMessage());
+            e.printStackTrace();
+        }
+    }
+
+    /**
+     * Populate the customers table with sample data when empty.
+     */
+    private void ensureSampleCustomersExist() {
+        String countSql = "SELECT COUNT(*) FROM customers";
+        String insertSql = "INSERT INTO customers (first_name, last_name, email, phone, address, city, country, passport_number, date_of_birth, gender, is_active) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+        try (PreparedStatement countStmt = connection.prepareStatement(countSql)) {
+            ResultSet rs = countStmt.executeQuery();
+            if (rs.next() && rs.getInt(1) == 0) {
+                try (PreparedStatement insertStmt = connection.prepareStatement(insertSql)) {
+                    insertStmt.setString(1, "Alice");
+                    insertStmt.setString(2, "Smith");
+                    insertStmt.setString(3, "alice.smith@example.com");
+                    insertStmt.setString(4, "+1234567890");
+                    insertStmt.setString(5, "123 Maple Street");
+                    insertStmt.setString(6, "Springfield");
+                    insertStmt.setString(7, "USA");
+                    insertStmt.setString(8, "A1234567");
+                    insertStmt.setString(9, "1985-07-10");
+                    insertStmt.setString(10, "F");
+                    insertStmt.setBoolean(11, true);
+                    insertStmt.executeUpdate();
+
+                    insertStmt.setString(1, "Bob");
+                    insertStmt.setString(2, "Johnson");
+                    insertStmt.setString(3, "bob.johnson@example.com");
+                    insertStmt.setString(4, "+1987654321");
+                    insertStmt.setString(5, "456 Oak Avenue");
+                    insertStmt.setString(6, "Riverdale");
+                    insertStmt.setString(7, "Canada");
+                    insertStmt.setString(8, "B9876543");
+                    insertStmt.setString(9, "1990-03-25");
+                    insertStmt.setString(10, "M");
+                    insertStmt.setBoolean(11, true);
+                    insertStmt.executeUpdate();
+
+                    System.out.println("Sample customer records created");
+                }
+            }
+        } catch (SQLException e) {
+            System.err.println("Error seeding sample customers: " + e.getMessage());
+            e.printStackTrace();
+        }
+    }
+
+    /**
+     * Migrate an existing users table to support the USER role constraint.
+     */
+    private void migrateUsersTableIfNeeded() {
+        String sql = "SELECT sql FROM sqlite_master WHERE type='table' AND name='users'";
+        String createSql = null;
+
+        try (Connection migrationConnection = DriverManager.getConnection(SQLITE_URL);
+             Statement stmt = migrationConnection.createStatement();
+             ResultSet rs = stmt.executeQuery(sql)) {
+            if (rs.next()) {
+                createSql = rs.getString("sql");
+            }
+        } catch (SQLException e) {
+            System.err.println("Error reading users table schema: " + e.getMessage());
+            e.printStackTrace();
+            return;
+        }
+
+        if (createSql != null && createSql.contains("role IN") && !createSql.contains("'USER'")) {
+            try (Connection migrationConnection = DriverManager.getConnection(SQLITE_URL)) {
+                migrationConnection.setAutoCommit(false);
+                try (Statement migrateStmt = migrationConnection.createStatement()) {
+                    migrateStmt.execute("ALTER TABLE users RENAME TO users_old");
+                    migrateStmt.execute("""
+                        CREATE TABLE users (
+                            user_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                            username TEXT NOT NULL UNIQUE,
+                            password TEXT NOT NULL,
+                            email TEXT,
+                            role TEXT NOT NULL CHECK (role IN ('ADMIN', 'USER', 'EMPLOYEE', 'MANAGER')),
+                            is_active BOOLEAN DEFAULT 1,
+                            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                        )
+                        """);
+                    migrateStmt.execute("INSERT INTO users (user_id, username, password, email, role, is_active, created_at, updated_at) SELECT user_id, username, password, email, role, is_active, created_at, updated_at FROM users_old");
+                    migrateStmt.execute("DROP TABLE users_old");
+                    migrationConnection.commit();
+                    System.out.println("Migrated users table to support USER role in the role constraint");
+                } catch (SQLException migrationException) {
+                    migrationConnection.rollback();
+                    throw migrationException;
+                } finally {
+                    migrationConnection.setAutoCommit(true);
+                }
+            } catch (SQLException e) {
+                System.err.println("Error migrating users table: " + e.getMessage());
+                e.printStackTrace();
+            }
+        }
+    }
+
+    /**
+     * Ensure the default admin user exists in the database on first startup
+     */
+    private void ensureAdminExists() {
+        String checkSql = "SELECT COUNT(*) FROM users WHERE username = ?";
+        String insertSql = "INSERT INTO users (username, password, email, role, is_active) VALUES (?, ?, ?, ?, ?)";
+        try (PreparedStatement checkStmt = connection.prepareStatement(checkSql)) {
+            checkStmt.setString(1, "admin");
+            ResultSet rs = checkStmt.executeQuery();
+            if (!rs.next() || rs.getInt(1) == 0) {
+                try (PreparedStatement insertStmt = connection.prepareStatement(insertSql)) {
+                    insertStmt.setString(1, "admin");
+                    insertStmt.setString(2, "admin123");
+                    insertStmt.setString(3, "");
+                    insertStmt.setString(4, "ADMIN");
+                    insertStmt.setBoolean(5, true);
+                    insertStmt.executeUpdate();
+                    System.out.println("Default admin account created");
+                }
+            }
+        } catch (SQLException e) {
+            System.err.println("Error ensuring default admin user exists: " + e.getMessage());
             e.printStackTrace();
         }
     }
@@ -256,10 +382,17 @@ public class DatabaseConnection {
         return connection;
     }
 
+    private void ensureConnection() throws SQLException {
+        if (connection == null || connection.isClosed()) {
+            initializeDatabase();
+        }
+    }
+
     /**
      * Execute query with prepared statement
      */
     public <T> T executeQuery(String sql, QueryExecutor<T> executor) throws SQLException {
+        ensureConnection();
         try (PreparedStatement stmt = connection.prepareStatement(sql)) {
             return executor.execute(stmt);
         }
@@ -269,6 +402,7 @@ public class DatabaseConnection {
      * Execute update with prepared statement
      */
     public int executeUpdate(String sql, UpdateExecutor executor) throws SQLException {
+        ensureConnection();
         try (PreparedStatement stmt = connection.prepareStatement(sql)) {
             executor.execute(stmt);
             return stmt.executeUpdate();
@@ -306,3 +440,4 @@ public class DatabaseConnection {
         void execute(PreparedStatement stmt) throws SQLException;
     }
 }
+//Run → Main Class

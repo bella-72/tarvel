@@ -2,6 +2,7 @@ package com.travelagency.controller;
 
 import com.travelagency.model.Customer;
 import com.travelagency.service.CustomerService;
+import javafx.beans.binding.BooleanBinding;
 import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
 import javafx.fxml.FXML;
@@ -11,8 +12,6 @@ import javafx.scene.layout.HBox;
 import javafx.scene.layout.VBox;
 import javafx.scene.text.Font;
 import javafx.scene.text.FontWeight;
-import java.time.LocalDate;
-import java.time.LocalDateTime;
 import java.util.List;
 
 /**
@@ -27,6 +26,14 @@ public class CustomersController {
     private TableView<Customer> customersTable;
     private ObservableList<Customer> customersData;
 
+    @FXML
+    public void initialize() {
+        if (customerService == null) {
+            customerService = new CustomerService();
+        }
+        loadCustomers();
+    }
+
     /**
      * Set customer service
      */
@@ -34,12 +41,17 @@ public class CustomersController {
         this.customerService = customerService;
     }
 
-    /**
-     * Load customers
-     */
     public void loadCustomers() {
-        if (mainContainer == null) return;
+        if (mainContainer == null) {
+            System.err.println("CustomersController: mainContainer is not initialized");
+            return;
+        }
 
+        if (customerService == null) {
+            customerService = new CustomerService();
+        }
+
+        mainContainer.getChildren().clear();
         mainContainer.setPadding(new Insets(20));
         mainContainer.setSpacing(15);
         mainContainer.setStyle("-fx-background-color: #ecf0f1;");
@@ -89,10 +101,12 @@ public class CustomersController {
         HBox fieldsRow2 = new HBox(10);
         TextField phoneField = createTextField("Phone", 150);
         TextField addressField = createTextField("Address", 200);
+        TextField cityField = createTextField("City", 150);
         TextField countryField = createTextField("Country", 150);
         fieldsRow2.getChildren().addAll(
             new Label("Phone:"), phoneField,
             new Label("Address:"), addressField,
+            new Label("City:"), cityField,
             new Label("Country:"), countryField
         );
 
@@ -104,31 +118,60 @@ public class CustomersController {
 
         Button addButton = new Button("Add Customer");
         addButton.setStyle("-fx-font-size: 12; -fx-padding: 8;");
+
+        BooleanBinding invalidInput = firstNameField.textProperty().isEmpty()
+            .or(lastNameField.textProperty().isEmpty())
+            .or(emailField.textProperty().isEmpty())
+            .or(phoneField.textProperty().isEmpty())
+            .or(addressField.textProperty().isEmpty())
+            .or(cityField.textProperty().isEmpty())
+            .or(countryField.textProperty().isEmpty())
+            .or(genderField.textProperty().isEmpty())
+            .or(dobPicker.valueProperty().isNull());
+        addButton.disableProperty().bind(invalidInput);
+
         addButton.setOnAction(e -> {
+            String email = emailField.getText().trim();
+            String gender = genderField.getText().trim().toUpperCase();
+
+            if (!List.of("M", "F", "O").contains(gender)) {
+                showAlert("Validation Error", "Gender must be M, F, or O.", Alert.AlertType.WARNING);
+                return;
+            }
+
+            if (customerService.emailExists(email)) {
+                showAlert("Duplicate Email", "A customer with this email already exists.", Alert.AlertType.WARNING);
+                return;
+            }
+
             Customer customer = new Customer();
-            customer.setFirstName(firstNameField.getText());
-            customer.setLastName(lastNameField.getText());
-            customer.setEmail(emailField.getText());
-            customer.setPhone(phoneField.getText());
-            customer.setAddress(addressField.getText());
-            customer.setCountry(countryField.getText());
-            customer.setPassportNumber(passportField.getText());
+            customer.setFirstName(firstNameField.getText().trim());
+            customer.setLastName(lastNameField.getText().trim());
+            customer.setEmail(email);
+            customer.setPhone(phoneField.getText().trim());
+            customer.setAddress(addressField.getText().trim());
+            customer.setCity(cityField.getText().trim());
+            customer.setCountry(countryField.getText().trim());
+            customer.setPassportNumber(passportField.getText().trim());
             customer.setDateOfBirth(dobPicker.getValue());
-            customer.setGender(genderField.getText());
+            customer.setGender(gender);
+            customer.setActive(true);
 
             if (customerService.createCustomer(customer)) {
-                showAlert("Success", "Customer added successfully", Alert.AlertType.INFORMATION);
+                showAlert("Success", "Customer added successfully.", Alert.AlertType.INFORMATION);
                 refreshCustomersTable();
                 firstNameField.clear();
                 lastNameField.clear();
                 emailField.clear();
                 phoneField.clear();
                 addressField.clear();
+                cityField.clear();
                 countryField.clear();
                 passportField.clear();
                 genderField.clear();
+                dobPicker.setValue(null);
             } else {
-                showAlert("Error", "Failed to add customer", Alert.AlertType.ERROR);
+                showAlert("Error", "Failed to add customer. Please check the data and try again.", Alert.AlertType.ERROR);
             }
         });
 
@@ -152,16 +195,18 @@ public class CustomersController {
         section.setStyle("-fx-background-color: white; -fx-border-color: #bdc3c7; -fx-background-radius: 5;");
 
         TextField searchField = new TextField();
-        searchField.setPromptText("Search by name or email...");
-        searchField.setPrefWidth(300);
+        searchField.setPromptText("Search by first name, last name, or email...");
+        searchField.setPrefWidth(320);
 
         Button searchButton = new Button("Search");
         searchButton.setOnAction(e -> {
-            String searchTerm = searchField.getText();
-            if (!searchTerm.isEmpty()) {
-                List<Customer> results = customerService.searchCustomers(searchTerm);
-                customersData.setAll(results);
+            String searchTerm = searchField.getText().trim();
+            if (searchTerm.isEmpty()) {
+                refreshCustomersTable();
+                return;
             }
+            List<Customer> results = customerService.searchCustomers(searchTerm);
+            customersData.setAll(results);
         });
 
         Button refreshButton = new Button("Refresh");
@@ -176,7 +221,9 @@ public class CustomersController {
      */
     private void createCustomersTable() {
         customersTable = new TableView<>();
-        customersTable.setPrefHeight(400);
+        customersTable.setPrefHeight(420);
+        customersTable.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY);
+        customersTable.setPlaceholder(new Label("No customers available."));
         customersData = FXCollections.observableArrayList();
         customersTable.setItems(customersData);
 

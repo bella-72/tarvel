@@ -4,4 +4,5 @@
 
 <VBox xmlns="http://javafx.com/javafx/20.0.1" xmlns:fx="http://javafx.com/fxml/1"
       fx:controller="com.travelagency.controller.CustomersController"
+      fx:id="mainContainer"
       spacing="20"/>

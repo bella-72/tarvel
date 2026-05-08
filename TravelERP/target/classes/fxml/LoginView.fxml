@@ -30,6 +30,8 @@
             
             <Button fx:id="loginButton" text="Login" prefWidth="100" prefHeight="40"
                     style="-fx-font-size: 14; -fx-background-color: #3498db; -fx-text-fill: white; -fx-cursor: hand;"/>
+            <Button fx:id="createAccountButton" text="Create Account" prefWidth="140" prefHeight="36"
+                    style="-fx-font-size: 13; -fx-background-color: #27ae60; -fx-text-fill: white; -fx-cursor: hand;"/>
             
             <Label fx:id="errorLabel" text="" style="-fx-text-fill: #e74c3c; -fx-font-size: 12;"/>
             

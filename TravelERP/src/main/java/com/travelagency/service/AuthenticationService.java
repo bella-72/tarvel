@@ -29,14 +29,17 @@ public class AuthenticationService {
      * Register new user
      */
     public boolean registerUser(User user) {
-        // Check if user already exists
+        // Check if username already exists
         if (userDAO.findByUsername(user.getUsername()).isPresent()) {
             System.err.println("Username already exists");
             return false;
         }
-        if (userDAO.findByEmail(user.getEmail()).isPresent()) {
-            System.err.println("Email already exists");
-            return false;
+        String email = user.getEmail();
+        if (email != null && !email.isBlank()) {
+            if (userDAO.findByEmail(email).isPresent()) {
+                System.err.println("Email already exists");
+                return false;
+            }
         }
         return userDAO.create(user);
     }

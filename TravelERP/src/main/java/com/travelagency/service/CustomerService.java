@@ -19,7 +19,23 @@ public class CustomerService {
      * Create new customer
      */
     public boolean createCustomer(Customer customer) {
+        if (customer == null || customer.getEmail() == null || customer.getEmail().isBlank()) {
+            return false;
+        }
+        if (emailExists(customer.getEmail())) {
+            return false;
+        }
         return customerDAO.create(customer);
+    }
+
+    /**
+     * Check if email is already registered
+     */
+    public boolean emailExists(String email) {
+        if (email == null || email.isBlank()) {
+            return false;
+        }
+        return customerDAO.emailExists(email.trim());
     }
 
     /**

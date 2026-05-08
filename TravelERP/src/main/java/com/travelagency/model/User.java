@@ -12,6 +12,7 @@ public class User extends BaseEntity {
 
     public enum UserRole {
         ADMIN("ADMIN"),
+        USER("USER"),
         EMPLOYEE("EMPLOYEE"),
         MANAGER("MANAGER");
 

@@ -5,6 +5,7 @@ import com.travelagency.model.Payment;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
+import java.util.UUID;
 
 /**
  * Payment Management Service
@@ -20,9 +21,28 @@ public class PaymentService {
      * Process payment
      */
     public boolean processPayment(Payment payment) {
+        if (payment == null
+                || payment.getReservationId() <= 0
+                || payment.getAmount() <= 0
+                || payment.getPaymentMethod() == null) {
+            return false;
+        }
+
+        if (payment.getTransactionId() == null || payment.getTransactionId().isBlank()) {
+            payment.setTransactionId(generateTransactionId());
+        }
         payment.setTransactionDate(LocalDateTime.now());
-        payment.setPaymentStatus(Payment.PaymentStatus.COMPLETED);
+        if (payment.getPaymentStatus() == null) {
+            payment.setPaymentStatus(Payment.PaymentStatus.COMPLETED);
+        }
         return paymentDAO.create(payment);
+    }
+
+    /**
+     * Generate a unique transaction ID
+     */
+    public String generateTransactionId() {
+        return UUID.randomUUID().toString().replace("-", "").substring(0, 12).toUpperCase();
     }
 
     /**

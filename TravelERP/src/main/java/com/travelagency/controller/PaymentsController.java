@@ -13,9 +13,8 @@ import javafx.scene.layout.HBox;
 import javafx.scene.layout.VBox;
 import javafx.scene.text.Font;
 import javafx.scene.text.FontWeight;
-import java.time.LocalDateTime;
+import javafx.util.StringConverter;
 import java.util.List;
-import java.util.Optional;
 
 /**
  * Payments Management Controller
@@ -29,13 +28,27 @@ public class PaymentsController {
     private ReservationService reservationService;
     private TableView<Payment> paymentsTable;
     private ObservableList<Payment> paymentsData;
+    private VBox summarySection;
+
+    @FXML
+    public void initialize() {
+        if (paymentService == null) {
+            paymentService = new PaymentService();
+        }
+        if (reservationService == null) {
+            reservationService = new ReservationService();
+        }
+        loadPayments();
+    }
 
     /**
      * Set payment service
      */
     public void setPaymentService(PaymentService paymentService) {
         this.paymentService = paymentService;
-        this.reservationService = new ReservationService();
+        if (reservationService == null) {
+            this.reservationService = new ReservationService();
+        }
     }
 
     /**
@@ -44,6 +57,7 @@ public class PaymentsController {
     public void loadPayments() {
         if (mainContainer == null) return;
 
+        mainContainer.getChildren().clear();
         mainContainer.setPadding(new Insets(20));
         mainContainer.setSpacing(15);
         mainContainer.setStyle("-fx-background-color: #ecf0f1;");
@@ -54,7 +68,7 @@ public class PaymentsController {
         mainContainer.getChildren().add(title);
 
         // Summary section
-        VBox summarySection = createSummarySection();
+        summarySection = createSummarySection();
         mainContainer.getChildren().add(summarySection);
 
         // Process payment section
@@ -131,8 +145,26 @@ public class PaymentsController {
         HBox row1 = new HBox(10);
         ComboBox<Reservation> reservationCombo = new ComboBox<>();
         reservationCombo.setItems(FXCollections.observableArrayList(reservationService.getAllReservations()));
-        reservationCombo.setPrefWidth(200);
+        reservationCombo.setPrefWidth(280);
         reservationCombo.setPromptText("Select Reservation");
+        reservationCombo.setConverter(new StringConverter<>() {
+            @Override
+            public String toString(Reservation reservation) {
+                return reservation == null ? "" : String.format("#%d - C:%d P:%d [%s]", reservation.getId(), reservation.getCustomerId(), reservation.getPackageId(), reservation.getStatus());
+            }
+
+            @Override
+            public Reservation fromString(String string) {
+                return null;
+            }
+        });
+        reservationCombo.setCellFactory(listView -> new ListCell<>() {
+            @Override
+            protected void updateItem(Reservation reservation, boolean empty) {
+                super.updateItem(reservation, empty);
+                setText(empty || reservation == null ? null : String.format("#%d - C:%d P:%d [%s]", reservation.getId(), reservation.getCustomerId(), reservation.getPackageId(), reservation.getStatus()));
+            }
+        });
 
         TextField amountField = createTextField("Amount", 150);
         ComboBox<String> methodCombo = new ComboBox<>();
@@ -148,6 +180,7 @@ public class PaymentsController {
 
         HBox row2 = new HBox(10);
         TextField transactionIdField = createTextField("Transaction ID", 200);
+        transactionIdField.setText(paymentService.generateTransactionId());
         TextArea notesArea = new TextArea();
         notesArea.setPromptText("Payment Notes");
         notesArea.setPrefHeight(50);
@@ -157,25 +190,43 @@ public class PaymentsController {
         processButton.setStyle("-fx-font-size: 12; -fx-padding: 8;");
         processButton.setOnAction(e -> {
             if (reservationCombo.getValue() == null) {
-                showAlert("Error", "Please select a reservation", Alert.AlertType.ERROR);
+                showAlert("Error", "Please select a reservation.", Alert.AlertType.ERROR);
+                return;
+            }
+            if (amountField.getText().isBlank()) {
+                showAlert("Error", "Please enter an amount.", Alert.AlertType.ERROR);
+                return;
+            }
+            if (methodCombo.getValue() == null) {
+                showAlert("Error", "Please select a payment method.", Alert.AlertType.ERROR);
                 return;
             }
 
-            Payment payment = new Payment();
-            payment.setReservationId(reservationCombo.getValue().getId());
-            payment.setAmount(Double.parseDouble(amountField.getText()));
-            payment.setPaymentMethod(Payment.PaymentMethod.valueOf(methodCombo.getValue()));
-            payment.setTransactionId(transactionIdField.getText());
-            payment.setNotes(notesArea.getText());
+            try {
+                double amount = Double.parseDouble(amountField.getText().trim());
+                if (amount <= 0) {
+                    showAlert("Validation Error", "Amount must be a positive number.", Alert.AlertType.WARNING);
+                    return;
+                }
 
-            if (paymentService.processPayment(payment)) {
-                showAlert("Success", "Payment processed successfully", Alert.AlertType.INFORMATION);
-                refreshPaymentsTable();
-                amountField.clear();
-                transactionIdField.clear();
-                notesArea.clear();
-            } else {
-                showAlert("Error", "Failed to process payment", Alert.AlertType.ERROR);
+                Payment payment = new Payment();
+                payment.setReservationId(reservationCombo.getValue().getId());
+                payment.setAmount(amount);
+                payment.setPaymentMethod(Payment.PaymentMethod.valueOf(methodCombo.getValue()));
+                payment.setTransactionId(transactionIdField.getText().trim());
+                payment.setNotes(notesArea.getText().trim());
+
+                if (paymentService.processPayment(payment)) {
+                    showAlert("Success", "Payment processed successfully.", Alert.AlertType.INFORMATION);
+                    refreshPaymentsTable();
+                    amountField.clear();
+                    transactionIdField.setText(paymentService.generateTransactionId());
+                    notesArea.clear();
+                } else {
+                    showAlert("Error", "Failed to process payment. Please check the reservation and try again.", Alert.AlertType.ERROR);
+                }
+            } catch (NumberFormatException ex) {
+                showAlert("Validation Error", "Amount must be a valid number.", Alert.AlertType.WARNING);
             }
         });
 
@@ -194,7 +245,9 @@ public class PaymentsController {
      */
     private void createPaymentsTable() {
         paymentsTable = new TableView<>();
-        paymentsTable.setPrefHeight(400);
+        paymentsTable.setPrefHeight(420);
+        paymentsTable.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY);
+        paymentsTable.setPlaceholder(new Label("No payments available."));
         paymentsData = FXCollections.observableArrayList();
         paymentsTable.setItems(paymentsData);
 
@@ -225,6 +278,12 @@ public class PaymentsController {
     private void refreshPaymentsTable() {
         List<Payment> payments = paymentService.getAllPayments();
         paymentsData.setAll(payments);
+        if (summarySection != null) {
+            int summaryIndex = mainContainer.getChildren().indexOf(summarySection);
+            if (summaryIndex >= 0) {
+                mainContainer.getChildren().set(summaryIndex, createSummarySection());
+            }
+        }
     }
 
     /**

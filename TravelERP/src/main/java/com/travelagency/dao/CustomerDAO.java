@@ -140,15 +140,33 @@ public class CustomerDAO extends GenericRepository<Customer> {
     }
 
     /**
+     * Check whether a customer email already exists
+     */
+    public boolean emailExists(String email) {
+        String sql = "SELECT COUNT(*) FROM customers WHERE email = ?";
+        try {
+            return dbConnection.executeQuery(sql, stmt -> {
+                stmt.setString(1, email);
+                ResultSet rs = stmt.executeQuery();
+                return rs.next() && rs.getInt(1) > 0;
+            });
+        } catch (SQLException e) {
+            System.err.println("Error checking customer email existence: " + e.getMessage());
+            return false;
+        }
+    }
+
+    /**
      * Search customers by name
      */
     public List<Customer> searchByName(String searchTerm) {
-        String sql = "SELECT * FROM customers WHERE (first_name LIKE ? OR last_name LIKE ?) AND is_active = 1";
+        String sql = "SELECT * FROM customers WHERE (first_name LIKE ? OR last_name LIKE ? OR email LIKE ?) AND is_active = 1";
         try {
             return dbConnection.executeQuery(sql, stmt -> {
                 String pattern = "%" + searchTerm + "%";
                 stmt.setString(1, pattern);
                 stmt.setString(2, pattern);
+                stmt.setString(3, pattern);
                 ResultSet rs = stmt.executeQuery();
                 List<Customer> customers = new java.util.ArrayList<>();
                 while (rs.next()) {
